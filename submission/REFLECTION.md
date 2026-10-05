@@ -1,6 +1,6 @@
 # Reflection — Lab 19
 
-**Tên:** Heargreaves1
+**Tên:** Nguyễn Nguyên Phong
 **Cohort:** A20-K4
 **Path đã chạy:** lite (Windows 11, Python 3.12.6, embedding `bge-small-en-v1.5`)
 
