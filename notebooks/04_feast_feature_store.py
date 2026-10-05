@@ -96,6 +96,18 @@ if res.stderr:
 assert res.returncode == 0, f"feast apply failed: {res.stderr}"
 
 # %% [markdown]
+# Kiểm tra registry: `feast feature-views list` phải liệt kê đủ 3 views.
+
+# %%
+res = subprocess.run(
+    ["feast", "feature-views", "list"],
+    cwd=str(FEAST_DIR),
+    capture_output=True, text=True, check=False,
+)
+print(res.stdout)
+assert res.returncode == 0, f"feature-views list failed: {res.stderr}"
+
+# %% [markdown]
 # ## 3. `feast materialize-incremental` — load offline → online
 #
 # Feast scan offline store cho mọi sự kiện đến `now`, ghi giá trị mới nhất
@@ -195,6 +207,11 @@ historical = fs.get_historical_features(
         "user_profile_features:topic_affinity",
     ],
 ).to_df()
+# feast >= 0.66 (file offline store) bỏ hẳn những entity row không có feature
+# nào hợp lệ tại event_timestamp, thay vì trả NaN như bản cũ. Left-merge lại với
+# entity_df để giữ đủ 3 dòng: u_001 có event lúc NOW-2h nhưng profile chỉ được
+# ghi lúc NOW-1h → NaN, đúng tinh thần PIT (không dùng giá trị tương lai).
+historical = entity_df.merge(historical, on=["user_id", "event_timestamp"], how="left")
 print(historical)
 
 # %% [markdown]
@@ -202,10 +219,11 @@ print(historical)
 #
 # 1. Output cell 2: 3 Parquet files generated.
 # 2. Output cell 3: `feast apply` STDOUT showing "Created feature view <name>" × 3.
-# 3. Output cell 4: `materialize` log showing rows materialized to online store.
-# 4. Output cell 5: 1 online lookup result + latency.
-# 5. Output cell 6: 100-lookup P50/P95/P99 + PASS line.
-# 6. Output cell 7: PIT join DataFrame (3 rows × features).
+# 3. Output cell 4: `feast feature-views list` showing all 3 views.
+# 4. Output cell 5: `materialize` log showing rows materialized to online store.
+# 5. Output cell 6: 1 online lookup result + latency.
+# 6. Output cell 7: 100-lookup P50/P95/P99 + PASS line.
+# 7. Output cell 8: PIT join DataFrame (3 rows × features).
 #
 # ---
 #

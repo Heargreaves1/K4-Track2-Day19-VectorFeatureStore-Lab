@@ -36,7 +36,9 @@ proc = subprocess.Popen(
 )
 
 # Đợi server up + warm (Searcher.from_corpus loads embeddings + indexes 1000 docs)
-URL = "http://localhost:8000"
+# 127.0.0.1 thay vì localhost: trên Windows "localhost" thử IPv6 (::1) trước
+# trong khi uvicorn chỉ bind IPv4 → mỗi request mất thêm ~2 s fallback.
+URL = "http://127.0.0.1:8000"
 for _ in range(60):
     try:
         r = httpx.get(f"{URL}/healthz", timeout=2.0)

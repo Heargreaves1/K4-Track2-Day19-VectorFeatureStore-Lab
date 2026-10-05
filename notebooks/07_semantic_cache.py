@@ -116,6 +116,38 @@ for th in (0.60, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95):
 # > hằng số để copy. Phân bố query của bạn quyết định con số cuối cùng.
 
 # %% [markdown]
+# ### Chọn ngưỡng cho corpus này
+#
+# Bảng trên chỉ cho tỉ lệ ở vài mốc. Để chọn ngưỡng cần nhìn **khoảng cách** giữa
+# điểm cao nhất của nhóm "đáng lẽ MISS" và điểm thấp nhất của nhóm "đáng lẽ HIT".
+
+# %%
+neg = sorted(negatives)
+pos_ok = sorted(sc for sc, ok in positives if ok)
+pos_bad = sorted(sc for sc, ok in positives if not ok)   # gần nhất lại là câu KHÁC
+print(f"negative (đáng lẽ MISS): n={len(neg)}  max={neg[-1]:.3f}  "
+      f"median={neg[len(neg) // 2]:.3f}  ≥0.75: {sum(s >= 0.75 for s in neg)}")
+print(f"positive (đáng lẽ HIT) : n={len(pos_ok)}  min={pos_ok[0]:.3f}  "
+      f"median={pos_ok[len(pos_ok) // 2]:.3f}")
+print(f"positive nhưng hàng xóm gần nhất là câu khác: {len(pos_bad)}"
+      + (f" (max={pos_bad[-1]:.3f})" if pos_bad else ""))
+
+# %% [markdown]
+# **Chọn ngưỡng: 0,86.** Hai nhóm tách nhau bởi một khoảng trống hẹp: câu "đáng
+# lẽ MISS" cao nhất đạt **0,846**, câu "đáng lẽ HIT" thấp nhất đạt **0,874**. Đặt
+# ngưỡng giữa khoảng trống (0,86) cho **100% tiết kiệm, 0% trả lời sai** trên
+# probe, biên ~0,014 mỗi phía. Nếu ưu tiên an toàn (một câu trả lời sai đắt hơn
+# một lần gọi LLM), lên 0,90: vẫn 0% sai, tiết kiệm còn 96%.
+#
+# **Vì sao 0,75 chưa đủ:** median của nhóm "đáng lẽ MISS" đã là **0,721** và
+# 27/75 câu (36%) vượt 0,75 — hai câu hỏi tiếng Việt *khác chủ đề* trong corpus
+# này vốn đã giống nhau ~0,72. Nhiều khả năng vì `bge-small-en` là model tiếng
+# Anh: tokenizer bỏ dấu ("mở", "mỡ", "mợ" đều thành `mo`) và cắt âm tiết thành
+# mảnh subword, nên các câu khác nghĩa bị kéo lại gần nhau. 0,75 được hiệu chỉnh
+# trên model và dữ liệu khác, không mang sang được. Khoảng trống chỉ 0,028 nên
+# phải đo lại ngưỡng trên traffic thật — và mỗi lần đổi embedding model.
+
+# %% [markdown]
 # ## 3. TTL: câu trả lời cũ không tự biết mình cũ
 #
 # `SemanticCache` dùng **đồng hồ ảo** (`advance()`) nên ta test được TTL mà không

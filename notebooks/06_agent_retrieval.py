@@ -123,6 +123,66 @@ print(f"\nΔ recall vs single-shot:  tách câu {split - base:+.3f}   tách + fi
 # NB5 lặp lại ở tầng agent: **filter không miễn phí, phải đo chứ đừng đoán.**
 
 # %% [markdown]
+# ### Soi kỹ: vì sao `agentic (+filter)` thấp hơn `agentic (no filter)`?
+#
+# Doc vàng của mỗi vế nằm trọn trong **một** cụm topic (`topics` trong
+# `agent_queries.jsonl`). Nếu planner đoán đúng topic thì filter không thể làm
+# mất doc vàng — vậy recall chỉ giảm được khi planner **đoán sai topic**.
+# Kiểm chứng trên từng sub-question:
+
+# %%
+from app.agent import TOPIC_HINTS  # noqa: E402
+
+nofilt = Agent(tool, RuleBasedPlanner(budget=BUDGET, use_filters=False))
+filt = Agent(tool, RuleBasedPlanner(budget=BUDGET, use_filters=True))
+
+
+def topic_of_part(part: str, q: dict) -> str:
+    """Topic thật của một mảnh câu = topic của sub_question chứa mảnh đó."""
+    for sub, t in zip(q["sub_questions"], q["topics"]):
+        if part in sub or sub in part:
+            return t
+    return "?"
+
+
+print(f"{'id':<8}{'recall no-filter':>17}{'recall +filter':>16}    filter đoán sai")
+for q in queries:
+    truth = set(q["relevant_doc_ids"])
+    r0 = len(truth & set(nofilt.answer(q["question"]).doc_ids)) / len(truth)
+    r1 = len(truth & set(filt.answer(q["question"]).doc_ids)) / len(truth)
+    wrong = []
+    for args in filt.planner.plan(q["question"]):
+        true_t = topic_of_part(args.query, q)
+        if args.topic and args.topic != true_t:
+            kw = [h for h in TOPIC_HINTS[args.topic] if h in args.query.lower()]
+            got = tool(args).doc_ids
+            in_true = sum(d.startswith(true_t + "_") for d in got)
+            wrong.append(f"'{args.query}' → {args.topic} (thật: {true_t}; khớp {kw}; "
+                         f"{in_true}/{len(got)} doc đúng cụm)")
+    flag = " ↓" if r1 < r0 else "  "
+    print(f"{q['query_id']:<8}{r0:>17.3f}{r1:>16.3f}{flag}  {'; '.join(wrong)}")
+
+# %% [markdown]
+# **Kết luận (theo số đo ở trên).** Cùng ngân sách 16 doc và cùng 2.3 call/câu,
+# `agentic (+filter)` thua `no filter` 0.083 recall (0.906 → 0.823) và 0.17
+# balance (0.93 → 0.76). **Toàn bộ** khoảng chênh nằm ở 2/12 câu — `mq_003` và
+# `mq_007`, mỗi câu mất đúng 0.5 recall (12 × 0.083 ≈ 2 × 0.5):
+#
+# 1. `detect_topic` so keyword bằng **substring**, nên hint `"ai"` khớp nhầm vào
+#    "f**ai**lure" và "h**ai** yếu tố" → planner gắn `topic=ai_ml` cho hai vế
+#    thực ra thuộc `backend` và `security`.
+# 2. Filter là ràng buộc **cứng**: 0/8 doc trả về thuộc cụm đúng → vế đó mất
+#    trắng. Ở 10 câu còn lại recall y hệt — filter đoán đúng cũng không *thêm*
+#    được gì, vì search không filter vốn đã tìm đúng cụm.
+# 3. Phản tỉnh **không cứu được**: nó chỉ chạy khi một call trả < 4 doc, còn
+#    filter sai cụm vẫn trả đủ 8 doc trông hợp lệ → lỗi im lặng.
+#
+# Filter còn tốn thêm: cùng số call nhưng chậm gần gấp đôi (cột `ms`), vì Qdrant
+# chế độ in-memory kiểm tra filter trên từng điểm. Cách sửa: khớp keyword theo
+# ranh giới từ (`\bai\b`), chỉ filter khi chắc chắn, và phản tỉnh theo *điểm
+# similarity* chứ không chỉ theo *số lượng* doc.
+
+# %% [markdown]
 # ## 4. Reflection: filter tồi còn tệ hơn không filter
 #
 # `Agent` thử lại **một lần** với filter được nới ra khi một call trả về quá ít
